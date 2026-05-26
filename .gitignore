@@ -1,0 +1,9 @@
+initdb-postgres/
+initdb-clickhouse/
+.ivy2/
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+jars/

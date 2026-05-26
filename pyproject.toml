@@ -1,0 +1,11 @@
+[project]
+name = "bigdataspark"
+version = "0.1.0"
+description = "Spark ETL: PostgreSQL raw -> star schema -> ClickHouse reports"
+requires-python = ">=3.10"
+dependencies = [
+    "pyspark==3.5.1",
+]
+
+[tool.uv]
+dev-dependencies = []

@@ -1,0 +1,142 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - "./data:/data:ro"
+      - "./initdb-postgres:/docker-entrypoint-initdb.d:ro"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: sales
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d sales"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - "./initdb-clickhouse:/docker-entrypoint-initdb.d:ro"
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DB: reports
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  cassandra:
+    image: cassandra:5
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: bds
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'"]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
+
+  cassandra-init:
+    image: cassandra:5
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - "./sql/cassandra:/init:ro"
+    entrypoint: ["cqlsh"]
+    command: ["-u", "cassandra", "-p", "cassandra", "cassandra", "-f", "/init/00_reports_schema.cql"]
+    restart: "no"
+
+  neo4j:
+    image: neo4j:5
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/testtest1"
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: reports
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "admin", "-p", "admin", "--authenticationDatabase", "admin", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  spark:
+    image: apache/spark:3.5.3
+    user: root
+    entrypoint: ["/bin/bash", "-lc"]
+    command: ["tail -f /dev/null"]
+    volumes:
+      - "./jobs:/opt/jobs:ro"
+      - "./jars:/opt/extra-jars:ro"
+      - "./.ivy2:/root/.ivy2"
+    environment:
+      PYTHONPATH: "/opt"
+      PG_URL: "jdbc:postgresql://postgres:5432/sales"
+      PG_USER: "admin"
+      PG_PASSWORD: "admin"
+      CH_URL: "jdbc:clickhouse://clickhouse:8123/reports"
+      CH_USER: "admin"
+      CH_PASSWORD: "admin"
+      CH_HOST: "clickhouse"
+      CH_HTTP_PORT: "8123"
+      CH_DB: "reports"
+      CASSANDRA_HOST: "cassandra"
+      CASSANDRA_PORT: "9042"
+      CASSANDRA_USER: "cassandra"
+      CASSANDRA_PASSWORD: "cassandra"
+      CASSANDRA_KEYSPACE: "reports"
+      NEO4J_URL: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "testtest1"
+      MONGO_URI: "mongodb://admin:admin@mongodb:27017/reports?authSource=admin"
+      MONGO_DB: "reports"
+      VALKEY_HOST: "valkey"
+      VALKEY_PORT: "6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
