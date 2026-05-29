@@ -1,5 +1,5 @@
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
@@ -10,6 +10,23 @@ PG_PROPS = {
     "password": os.environ["PG_PASSWORD"],
     "driver": "org.postgresql.Driver",
 }
+
+SPARK_MEMORY_CAP = os.environ.get("SPARK_MEMORY_CAP", "2g")
+
+
+def build_spark(
+    app_name: str, extra_conf: Optional[Dict[str, str]] = None
+) -> SparkSession:
+    builder = (
+        SparkSession.builder.appName(app_name)
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.executor.memory", SPARK_MEMORY_CAP)
+    )
+    for key, value in (extra_conf or {}).items():
+        builder = builder.config(key, value)
+    spark = builder.getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    return spark
 
 
 def read_pg(spark: SparkSession, table: str) -> DataFrame:

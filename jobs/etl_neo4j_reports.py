@@ -1,9 +1,9 @@
 import os
 
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame
 from pyspark.sql.types import DecimalType
 
-from jobs.reports_common import build_reports
+from jobs.reports_common import build_reports, build_spark
 
 
 def decimals_to_double(df: DataFrame) -> DataFrame:
@@ -28,12 +28,7 @@ TARGETS = {
 
 
 def main() -> None:
-    spark = (
-        SparkSession.builder.appName("etl_reports_neo4j")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
+    spark = build_spark("etl_reports_neo4j")
 
     for name, df in build_reports(spark).items():
         label, keys = TARGETS[name]

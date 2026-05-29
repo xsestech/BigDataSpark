@@ -1,8 +1,6 @@
 import os
 
-from pyspark.sql import SparkSession
-
-from jobs.reports_common import build_reports
+from jobs.reports_common import build_reports, build_spark
 
 CH_HOST = os.environ.get("CH_HOST", "clickhouse")
 CH_HTTP_PORT = os.environ.get("CH_HTTP_PORT", "8123")
@@ -13,21 +11,18 @@ CH_CATALOG = "ch"
 
 
 def main() -> None:
-    spark = (
-        SparkSession.builder.appName("etl_reports_clickhouse")
-        .config("spark.sql.session.timeZone", "UTC")
-        .config(
-            f"spark.sql.catalog.{CH_CATALOG}", "com.clickhouse.spark.ClickHouseCatalog"
-        )
-        .config(f"spark.sql.catalog.{CH_CATALOG}.host", CH_HOST)
-        .config(f"spark.sql.catalog.{CH_CATALOG}.protocol", "http")
-        .config(f"spark.sql.catalog.{CH_CATALOG}.http_port", CH_HTTP_PORT)
-        .config(f"spark.sql.catalog.{CH_CATALOG}.user", CH_USER)
-        .config(f"spark.sql.catalog.{CH_CATALOG}.password", CH_PASSWORD)
-        .config(f"spark.sql.catalog.{CH_CATALOG}.database", CH_DB)
-        .getOrCreate()
+    spark = build_spark(
+        "etl_reports_clickhouse",
+        {
+            f"spark.sql.catalog.{CH_CATALOG}": "com.clickhouse.spark.ClickHouseCatalog",
+            f"spark.sql.catalog.{CH_CATALOG}.host": CH_HOST,
+            f"spark.sql.catalog.{CH_CATALOG}.protocol": "http",
+            f"spark.sql.catalog.{CH_CATALOG}.http_port": CH_HTTP_PORT,
+            f"spark.sql.catalog.{CH_CATALOG}.user": CH_USER,
+            f"spark.sql.catalog.{CH_CATALOG}.password": CH_PASSWORD,
+            f"spark.sql.catalog.{CH_CATALOG}.database": CH_DB,
+        },
     )
-    spark.sparkContext.setLogLevel("WARN")
 
     for name, df in build_reports(spark).items():
         qualified = f"{CH_CATALOG}.{CH_DB}.{name}"

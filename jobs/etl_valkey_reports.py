@@ -1,9 +1,8 @@
 import os
 
 import redis
-from pyspark.sql import SparkSession
 
-from jobs.reports_common import build_reports
+from jobs.reports_common import build_reports, build_spark
 
 VALKEY_HOST = os.environ.get("VALKEY_HOST", "valkey")
 VALKEY_PORT = int(os.environ.get("VALKEY_PORT", "6379"))
@@ -40,12 +39,7 @@ def _scan_batches(client, pattern, count=1000):
 
 
 def main():
-    spark = (
-        SparkSession.builder.appName("etl_reports_valkey")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
+    spark = build_spark("etl_reports_valkey")
 
     client = redis.Redis(host=VALKEY_HOST, port=VALKEY_PORT, decode_responses=True)
 

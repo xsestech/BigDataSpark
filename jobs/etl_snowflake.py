@@ -4,7 +4,8 @@ import os
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
+
+from jobs.reports_common import build_spark
 
 PG_URL = os.environ["PG_URL"]
 PG_PROPS = {
@@ -47,9 +48,8 @@ def cast_raw(raw: DataFrame) -> DataFrame:
     )
 
 
-def with_surrogate_key(df: DataFrame, id_name: str, order_cols: list[str]) -> DataFrame:
-    w = Window.orderBy(*[F.col(c).asc_nulls_last() for c in order_cols])
-    return df.withColumn(id_name, F.row_number().over(w))
+def with_surrogate_key(df: DataFrame, id_name: str) -> DataFrame:
+    return df.withColumn(id_name, F.monotonically_increasing_id())
 
 
 def truncate_all(spark: SparkSession) -> None:
@@ -74,12 +74,7 @@ def write(df: DataFrame, table: str) -> None:
 
 
 def main() -> None:
-    spark = (
-        SparkSession.builder.appName("etl_snowflake")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
+    spark = build_spark("etl_snowflake")
 
     raw = cast_raw(spark.read.jdbc(PG_URL, "raw_sales", properties=PG_PROPS))
     raw.cache()
@@ -93,9 +88,8 @@ def main() -> None:
         .where(F.col("pet_type").isNotNull())
         .dropDuplicates(["pet_type"])
     )
-    dim_pet_category = with_surrogate_key(
-        dim_pet_category, "pet_category_id", ["pet_type"]
-    )
+    dim_pet_category = with_surrogate_key(dim_pet_category, "pet_category_id")
+    dim_pet_category.cache()
 
     dim_pet_breed = (
         raw.select(
@@ -107,9 +101,8 @@ def main() -> None:
         .select("breed_name", "pet_category_id")
         .dropDuplicates(["breed_name", "pet_category_id"])
     )
-    dim_pet_breed = with_surrogate_key(
-        dim_pet_breed, "breed_id", ["breed_name", "pet_category_id"]
-    )
+    dim_pet_breed = with_surrogate_key(dim_pet_breed, "breed_id")
+    dim_pet_breed.cache()
 
     dim_pet = (
         raw.select(
@@ -126,7 +119,8 @@ def main() -> None:
         .select("pet_name", "breed_id")
         .dropDuplicates(["pet_name", "breed_id"])
     )
-    dim_pet = with_surrogate_key(dim_pet, "pet_id", ["pet_name", "breed_id"])
+    dim_pet = with_surrogate_key(dim_pet, "pet_id")
+    dim_pet.cache()
 
     loc_customer = raw.select(
         F.col("customer_country").alias("country"),
@@ -156,9 +150,7 @@ def main() -> None:
     dim_location = (
         loc_customer.union(loc_seller).union(loc_store).union(loc_supplier).distinct()
     )
-    dim_location = with_surrogate_key(
-        dim_location, "location_id", ["country", "state", "city", "postal_code"]
-    )
+    dim_location = with_surrogate_key(dim_location, "location_id")
     dim_location.cache()
 
     dim_product_category = (
@@ -167,15 +159,17 @@ def main() -> None:
         .dropDuplicates(["category_name"])
     )
     dim_product_category = with_surrogate_key(
-        dim_product_category, "product_category_id", ["category_name"]
+        dim_product_category, "product_category_id"
     )
+    dim_product_category.cache()
 
     dim_brand = (
         raw.select(F.col("product_brand").alias("brand_name"))
         .where(F.col("brand_name").isNotNull())
         .dropDuplicates(["brand_name"])
     )
-    dim_brand = with_surrogate_key(dim_brand, "brand_id", ["brand_name"])
+    dim_brand = with_surrogate_key(dim_brand, "brand_id")
+    dim_brand.cache()
 
     dim_supplier = (
         raw.alias("r")
@@ -197,9 +191,7 @@ def main() -> None:
         )
         .dropDuplicates(["supplier_name", "email"])
     )
-    dim_supplier = with_surrogate_key(
-        dim_supplier, "supplier_id", ["supplier_name", "email"]
-    )
+    dim_supplier = with_surrogate_key(dim_supplier, "supplier_id")
     dim_supplier.cache()
 
     dim_customer = (
@@ -239,7 +231,7 @@ def main() -> None:
         )
         .dropDuplicates(["email"])
     )
-    dim_customer = with_surrogate_key(dim_customer, "customer_id", ["email"])
+    dim_customer = with_surrogate_key(dim_customer, "customer_id")
     dim_customer.cache()
 
     dim_seller = (
@@ -260,7 +252,7 @@ def main() -> None:
         )
         .dropDuplicates(["email"])
     )
-    dim_seller = with_surrogate_key(dim_seller, "seller_id", ["email"])
+    dim_seller = with_surrogate_key(dim_seller, "seller_id")
     dim_seller.cache()
 
     dim_store = (
@@ -282,7 +274,7 @@ def main() -> None:
         )
         .dropDuplicates(["store_name", "location_id"])
     )
-    dim_store = with_surrogate_key(dim_store, "store_id", ["store_name", "location_id"])
+    dim_store = with_surrogate_key(dim_store, "store_id")
     dim_store.cache()
 
     dim_product = (
@@ -316,9 +308,7 @@ def main() -> None:
         )
         .dropDuplicates(["product_name", "brand_id"])
     )
-    dim_product = with_surrogate_key(
-        dim_product, "product_id", ["product_name", "brand_id"]
-    )
+    dim_product = with_surrogate_key(dim_product, "product_id")
     dim_product.cache()
 
     fact_sales = (
@@ -365,9 +355,7 @@ def main() -> None:
             F.col("r.sale_total_price").alias("total_price"),
         )
     )
-    fact_sales = with_surrogate_key(
-        fact_sales, "sale_id", ["sale_date", "customer_id", "product_id"]
-    )
+    fact_sales = with_surrogate_key(fact_sales, "sale_id")
 
     truncate_all(spark)
 

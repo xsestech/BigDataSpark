@@ -12,8 +12,10 @@ MONGO_JAR    := $(JARS_DIR)/mongo-spark-connector_2.12-10.4.0.jar
 PG_PKG       := org.postgresql:postgresql:42.7.4
 MONGO_PKG    := org.mongodb.spark:mongo-spark-connector_2.12:10.4.0
 
+SPARK_MEMORY_CAP := 4g
 SPARK_SUBMIT := docker compose exec -T spark /opt/spark/bin/spark-submit \
                 --master local[*] \
+				--driver-memory $(SPARK_MEMORY_CAP) \
                 --conf spark.jars.ivy=/root/.ivy2
 
 help:

@@ -1,20 +1,13 @@
 import os
 
-from pyspark.sql import SparkSession
-
-from jobs.reports_common import build_reports
+from jobs.reports_common import build_reports, build_spark
 
 MONGO_URI = os.environ["MONGO_URI"]
 MONGO_DB = os.environ.get("MONGO_DB", "reports")
 
 
 def main() -> None:
-    spark = (
-        SparkSession.builder.appName("etl_reports_mongo")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
+    spark = build_spark("etl_reports_mongo")
 
     for name, df in build_reports(spark).items():
         (
